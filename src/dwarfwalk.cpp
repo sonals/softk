@@ -1,15 +1,94 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright (C) 2021 sonal.santan@gmail.com
+ * Copyright (C) 2021 Xilinx, Inc. All rights reserved.
+ * Author: sonal.santan@xilinx.com
  *
  */
 
 #include <iostream>
+#include <cassert>
 
 #include <libelf.h>
 #include <dwarf.h>
 #include <elfutils/libdw.h>
 
+static int processType(Dwarf_Die *die)
+{
+    std::cout << dwarf_diename(die) << std::endl;
+
+    switch (dwarf_tag(die)) {
+    case DW_TAG_typedef:
+    case DW_TAG_const_type:
+    case DW_TAG_volatile_type:
+    case DW_TAG_restrict_type:
+    {
+        Dwarf_Attribute attr;
+        Dwarf_Attribute *result = dwarf_attr_integrate (die, DW_AT_type, &attr);
+        Dwarf_Die tmem;
+        Dwarf_Die *tdie = dwarf_formref_die(&attr, &tmem);
+        return processType(tdie);
+    }
+    case DW_TAG_base_type:
+    case DW_TAG_enumeration_type:
+    case DW_TAG_pointer_type:
+    case DW_TAG_ptr_to_member_type:
+    case DW_TAG_structure_type:
+    case DW_TAG_class_type:
+    case DW_TAG_union_type:
+    case DW_TAG_array_type:
+    default:
+        break;
+    }
+    return 0;
+}
+
+static int processArgs(Dwarf_Die *die)
+{
+    switch (dwarf_tag (die)) {
+    case DW_TAG_formal_parameter:
+    {
+        const char *aname = dwarf_diename(die);
+        std::cout << aname << std::endl;
+        Dwarf_Attribute attr;
+        Dwarf_Attribute *result = dwarf_attr_integrate(die, DW_AT_type, &attr);
+        Dwarf_Die tmem;
+        Dwarf_Die *tdie = dwarf_formref_die(&attr, &tmem);
+        processType(&tmem);
+        break;
+    }
+    default:
+        break;
+    }
+    Dwarf_Die sibling;
+    if (dwarf_siblingof(die, &sibling))
+        return 0;
+    return processArgs(&sibling);
+}
+
+static int processFunction(Dwarf_Die *die, void *ctx)
+{
+    Elf *elf = (Elf *)ctx;
+    assert(dwarf_tag(die) == DW_TAG_subprogram);
+    const char *fname = dwarf_diename(die);
+    std::cout << fname << std::endl;
+
+    Dwarf_Attribute attr;
+    Dwarf_Attribute *result = dwarf_attr_integrate(die, DW_AT_type, &attr);
+    if (!result)
+        return 0;
+
+    Dwarf_Die child;
+    if (dwarf_child(die, &child) != 0)
+        return 0;
+
+    std::cout << '[';
+    processArgs(&child);
+    std::cout << ']';
+    const char *name = dwarf_formstring(&attr);
+    std::cout << name << std::endl;
+//    int ret_size = mips_arg_size(elf, die, &attr);
+    return 0;
+}
 
 int walk(const char *buffer, size_t size)
 {
@@ -20,7 +99,7 @@ int walk(const char *buffer, size_t size)
     Dwarf_Off old_offset;
     size_t hsize;
 
-    while (dwarf_nextcu (dw, old_offset = offset, &offset, &hsize, NULL, NULL, NULL) == 0)
+    while (dwarf_nextcu (dw, old_offset = offset, &offset, &hsize, nullptr, nullptr, nullptr) == 0)
     {
         Dwarf_Die cudie_mem;
         Dwarf_Die *cudie = dwarf_offdie (dw, old_offset + hsize, &cudie_mem);
@@ -31,6 +110,7 @@ int walk(const char *buffer, size_t size)
             continue;
         const char *cuname = dwarf_diename(cudie) ?: "unknown";
         std::cout << cuname << std::endl;
+        dwarf_getfuncs(cudie, &processFunction, ehandle, 0);
     }
     dwarf_end(dw);
     return 0;

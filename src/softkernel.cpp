@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /*
- * Copyright (C) 2020 sonal.santan@gmail.com
+ * Copyright (C) 2021 Xilinx, Inc. All rights reserved.
+ * Author: sonal.santan@xilinx.com
  *
  */
 
