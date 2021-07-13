@@ -14,7 +14,9 @@
 
 static int processType(Dwarf_Die *die)
 {
-    std::cout << dwarf_diename(die) << std::endl;
+    const char *tname = dwarf_diename(die);
+    if (tname)
+        std::cout << tname << std::endl;
 
     switch (dwarf_tag(die)) {
     case DW_TAG_typedef:
@@ -28,15 +30,25 @@ static int processType(Dwarf_Die *die)
         Dwarf_Die *tdie = dwarf_formref_die(&attr, &tmem);
         return processType(tdie);
     }
+    case DW_TAG_pointer_type:
+    {
+        std::cout << " *" << std::endl;
+        break;
+    }
+    case DW_TAG_reference_type:
+    {
+        std::cout << " &" << std::endl;
+        break;
+    }
     case DW_TAG_base_type:
     case DW_TAG_enumeration_type:
-    case DW_TAG_pointer_type:
     case DW_TAG_ptr_to_member_type:
     case DW_TAG_structure_type:
     case DW_TAG_class_type:
     case DW_TAG_union_type:
     case DW_TAG_array_type:
     default:
+        std::cout << dwarf_tag(die) << std::endl;
         break;
     }
     return 0;
@@ -54,6 +66,7 @@ static int processArgs(Dwarf_Die *die)
         Dwarf_Die tmem;
         Dwarf_Die *tdie = dwarf_formref_die(&attr, &tmem);
         processType(&tmem);
+        processLocation(&tmem);
         break;
     }
     default:
@@ -81,11 +94,13 @@ static int processFunction(Dwarf_Die *die, void *ctx)
     if (dwarf_child(die, &child) != 0)
         return 0;
 
-    std::cout << '[';
+    std::cout << '[' << std::endl;
     processArgs(&child);
-    std::cout << ']';
+    std::cout << ']' << std::endl;
+    std::cout.flush();
     const char *name = dwarf_formstring(&attr);
-    std::cout << name << std::endl;
+    if (name)
+        std::cout << name << std::endl;
 //    int ret_size = mips_arg_size(elf, die, &attr);
     return 0;
 }
