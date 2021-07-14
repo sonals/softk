@@ -12,6 +12,11 @@
 #include <dwarf.h>
 #include <elfutils/libdw.h>
 
+static int processLocation(Dwarf_Die *die)
+{
+    return 0;
+}
+
 static int processType(Dwarf_Die *die)
 {
     const char *tname = dwarf_diename(die);

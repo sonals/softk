@@ -29,8 +29,17 @@ ELSE(LIBELF_FOUND)
    MESSAGE(FATAL_ERROR "libelf not found")
 ENDIF(LIBELF_FOUND)
 
+pkg_check_modules(LIBFFI REQUIRED libffi)
+
+IF(LIBFFI_FOUND)
+   MESSAGE(STATUS "Found libffi at ${LIBFFI_PREFIX} ${LIBFFI_VERSION}")
+   INCLUDE_DIRECTORIES(${LIBFFI_INCLUDEDIR})
+ELSE(LIBFFI_FOUND)
+   MESSAGE(FATAL_ERROR "libffi not found")
+ENDIF(LIBFFI_FOUND)
+
 set (SRC
-  "softkernel.cpp"
+  "main.cpp"
   "dwarfwalk.cpp")
 
 add_executable(sk ${SRC})
@@ -39,4 +48,5 @@ target_link_libraries(sk
   pthread
   ${LIBDW_LDFLAGS}
   ${LIBELF_LDFLAGS}
+  ${LIBFFI_LDFLAGS}
   )
