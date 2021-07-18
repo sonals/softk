@@ -17,31 +17,42 @@ static int processLocation(Dwarf_Die *die)
     return 0;
 }
 
-static int processType(Dwarf_Die *die)
+static int processType(Dwarf_Attribute *attr)
 {
-    const char *tname = dwarf_diename(die);
+    Dwarf_Die die;
+    dwarf_formref_die(attr, &die);
+    const char *tname = dwarf_diename(&die);
     if (tname)
         std::cout << tname << std::endl;
 
-    switch (dwarf_tag(die)) {
+    switch (dwarf_tag(&die)) {
     case DW_TAG_typedef:
     case DW_TAG_const_type:
     case DW_TAG_volatile_type:
     case DW_TAG_restrict_type:
     {
         Dwarf_Attribute attr;
-        Dwarf_Attribute *result = dwarf_attr_integrate (die, DW_AT_type, &attr);
-        Dwarf_Die tmem;
-        Dwarf_Die *tdie = dwarf_formref_die(&attr, &tmem);
-        return processType(tdie);
+        if (dwarf_attr_integrate (&die, DW_AT_type, &attr))
+            return processType(&attr);
+        break;
     }
     case DW_TAG_pointer_type:
     {
+        if (dwarf_hasattr(&die, DW_AT_type)) {
+            Dwarf_Attribute attrt;
+            dwarf_attr(&die, DW_AT_type, &attrt);
+            processType(&attrt);
+        }
         std::cout << " *" << std::endl;
         break;
     }
     case DW_TAG_reference_type:
     {
+        if (dwarf_hasattr(&die, DW_AT_type)) {
+            Dwarf_Attribute attrt;
+            dwarf_attr(&die, DW_AT_type, &attrt);
+            processType(&attrt);
+        }
         std::cout << " &" << std::endl;
         break;
     }
@@ -53,7 +64,7 @@ static int processType(Dwarf_Die *die)
     case DW_TAG_union_type:
     case DW_TAG_array_type:
     default:
-        std::cout << dwarf_tag(die) << std::endl;
+//        std::cout << dwarf_tag(&die) << std::endl;
         break;
     }
     return 0;
@@ -66,12 +77,10 @@ static int processArgs(Dwarf_Die *die)
     {
         const char *aname = dwarf_diename(die);
         std::cout << aname << std::endl;
-        Dwarf_Attribute attr;
-        Dwarf_Attribute *result = dwarf_attr_integrate(die, DW_AT_type, &attr);
-        Dwarf_Die tmem;
-        Dwarf_Die *tdie = dwarf_formref_die(&attr, &tmem);
-        processType(&tmem);
-        processLocation(&tmem);
+        Dwarf_Attribute attrt;
+        if (!dwarf_attr_integrate(die, DW_AT_type, &attrt))
+            return 0;
+        processType(&attrt);
         break;
     }
     default:
@@ -90,9 +99,20 @@ static int processFunction(Dwarf_Die *die, void *ctx)
     const char *fname = dwarf_diename(die);
     std::cout << fname << std::endl;
 
-    Dwarf_Attribute attr;
-    Dwarf_Attribute *result = dwarf_attr_integrate(die, DW_AT_type, &attr);
-    if (!result)
+    Dwarf_Attribute attrt;
+    if (!dwarf_attr_integrate(die, DW_AT_type, &attrt))
+        return 0;
+
+    processType(&attrt);
+    Dwarf_Attribute attrv;
+    if (!dwarf_attr(die, DW_AT_external, &attrv))
+        return 0;
+
+    bool val = false;
+    if (dwarf_formflag(&attrv, &val))
+        return 0;
+
+    if (!val)
         return 0;
 
     Dwarf_Die child;
@@ -103,7 +123,7 @@ static int processFunction(Dwarf_Die *die, void *ctx)
     processArgs(&child);
     std::cout << ']' << std::endl;
     std::cout.flush();
-    const char *name = dwarf_formstring(&attr);
+    const char *name = dwarf_formstring(&attrt);
     if (name)
         std::cout << name << std::endl;
 //    int ret_size = mips_arg_size(elf, die, &attr);
