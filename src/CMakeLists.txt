@@ -38,11 +38,15 @@ ELSE(LIBFFI_FOUND)
    MESSAGE(FATAL_ERROR "libffi not found")
 ENDIF(LIBFFI_FOUND)
 
+include (CTest)
+
 set (SRC
   "main.cpp"
   "dwarfwalk.cpp")
 
 add_executable(sk ${SRC})
+
+target_compile_options(sk PRIVATE -Werror -Wall)
 
 set_target_properties(sk PROPERTIES
   CXX_VISIBILITY_PRESET "hidden"
@@ -54,3 +58,8 @@ target_link_libraries(sk
   ${LIBELF_LDFLAGS}
   ${LIBFFI_LDFLAGS}
   )
+
+enable_testing()
+  add_test(NAME smoke
+  COMMAND ${CMAKE_BINARY_DIR}/sk ${CMAKE_BINARY_DIR}/sk
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})

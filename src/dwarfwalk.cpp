@@ -17,6 +17,12 @@
 #include <elfutils/libdw.h>
 #include <ffi.h>
 
+enum enumtest {
+    ENUM1,
+    ENUM2,
+    ENUM3
+};
+
 __attribute__((visibility("default"))) int foo(char *bar, double baz)
 {
     return std::strlen(bar) + (int)baz;
@@ -27,12 +33,12 @@ __attribute__((visibility("default"))) int zoo(char zar, short dar)
     return zar + dar;
 }
 
-static int processLocation(Dwarf_Die *die)
+__attribute__((visibility("default"))) int doo(enumtest ear, void *var)
 {
-    return 0;
+    return ear;
 }
 
-static std::map<std::pair<Dwarf_Word, Dwarf_Word>, ffi_type> typeTable = {
+static const std::map<std::pair<Dwarf_Word, Dwarf_Word>, ffi_type> typeTable = {
     std::make_pair(std::make_pair(DW_ATE_unsigned_char, 1), ffi_type_uint8),
     std::make_pair(std::make_pair(DW_ATE_signed_char, 1), ffi_type_sint8),
     std::make_pair(std::make_pair(DW_ATE_unsigned, 2), ffi_type_uint16),
@@ -81,7 +87,7 @@ static ffi_type processType(Dwarf_Attribute *attr)
 {
     Dwarf_Die die;
     dwarf_formref_die(attr, &die);
-    int status = 0;
+
     const char *tname = dwarf_diename(&die);
     if (tname)
         std::cout << tname << std::endl;
@@ -103,6 +109,7 @@ static ffi_type processType(Dwarf_Attribute *attr)
             Dwarf_Attribute attrt;
             dwarf_attr(&die, DW_AT_type, &attrt);
             ffi_type ftype = processType(&attrt);
+            (void)ftype;
         }
         std::cout << " *" << std::endl;
         return ffi_type_pointer;
@@ -114,6 +121,7 @@ static ffi_type processType(Dwarf_Attribute *attr)
             Dwarf_Attribute attrt;
             dwarf_attr(&die, DW_AT_type, &attrt);
             ffi_type ftype = processType(&attrt);
+            (void)ftype;
         }
         std::cout << " &" << std::endl;
         break;
@@ -123,6 +131,9 @@ static ffi_type processType(Dwarf_Attribute *attr)
         return analyzeBaseType(&die);
     }
     case DW_TAG_enumeration_type:
+    {
+        return ffi_type_sint32;
+    }
     case DW_TAG_ptr_to_member_type:
     case DW_TAG_structure_type:
     case DW_TAG_class_type:
@@ -162,6 +173,7 @@ static int processArgs(Dwarf_Die *die, std::vector<std::pair<const char *, ffi_t
 int processFunction(Dwarf_Die *die, void *ctx)
 {
     Elf *elf = (Elf *)ctx;
+    (void)elf;
     assert(dwarf_tag(die) == DW_TAG_subprogram);
     const char *fname = dwarf_diename(die);
     std::cout << fname << std::endl;
@@ -222,8 +234,6 @@ int walk(const char *buffer, size_t size)
         dwarf_getfuncs(cudie, &processFunction, ehandle, 0);
     }
     dwarf_end(dw);
-
-    Elf64_Ehdr *hdr = elf64_getehdr(ehandle);
     elf_end(ehandle);
     return 0;
 }
