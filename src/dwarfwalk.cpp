@@ -7,20 +7,81 @@
 
 #include <iostream>
 #include <cassert>
+#include <cstring>
+#include <tuple>
+#include <map>
 
 #include <libelf.h>
 #include <dwarf.h>
 #include <elfutils/libdw.h>
+#include <ffi.h>
+
+__attribute__((visibility("default"))) int foo(char *bar, double baz)
+{
+    return std::strlen(bar) + (int)baz;
+}
+
+__attribute__((visibility("default"))) int zoo(char zar, short dar)
+{
+    return zar + dar;
+}
 
 static int processLocation(Dwarf_Die *die)
 {
     return 0;
 }
 
+static std::map<std::pair<Dwarf_Word, Dwarf_Word>, ffi_type> typeTable = {
+    std::make_pair(std::make_pair(DW_ATE_unsigned_char, 1), ffi_type_uint8),
+    std::make_pair(std::make_pair(DW_ATE_signed_char, 1), ffi_type_sint8),
+    std::make_pair(std::make_pair(DW_ATE_unsigned, 2), ffi_type_uint16),
+    std::make_pair(std::make_pair(DW_ATE_signed, 2), ffi_type_sint16),
+    std::make_pair(std::make_pair(DW_ATE_unsigned, 4), ffi_type_uint32),
+    std::make_pair(std::make_pair(DW_ATE_signed, 4), ffi_type_sint32),
+    std::make_pair(std::make_pair(DW_ATE_unsigned, 8), ffi_type_uint64),
+    std::make_pair(std::make_pair(DW_ATE_signed, 8), ffi_type_sint64),
+    std::make_pair(std::make_pair(DW_ATE_float, 4), ffi_type_float),
+    std::make_pair(std::make_pair(DW_ATE_float, 8), ffi_type_double)
+};
+
+static ffi_type qualifyBaseType(const std::pair<Dwarf_Word, Dwarf_Word> &code)
+{
+    auto iter = typeTable.find(code);
+    return (iter == typeTable.end()) ? iter->second : ffi_type_void;
+}
+
+static int analyzeBaseType(Dwarf_Die *die)
+{
+    Dwarf_Attribute temp;
+    Dwarf_Word type;
+
+    if (!dwarf_attr(die, DW_AT_encoding, &temp))
+        return 0;
+
+    if (dwarf_formudata(&temp, &type))
+        return 0;
+
+    std::cout << type << std::endl;
+
+    Dwarf_Attribute temp2;
+    Dwarf_Word size;
+    if (!dwarf_attr(die, DW_AT_byte_size, &temp2))
+        return 0;
+
+    if (dwarf_formudata(&temp2, &size))
+        return 0;
+
+    std::cout << size << std::endl;
+    ffi_type ftype = qualifyBaseType(std::make_pair(type, size));
+    return 0;
+}
+
+
 static int processType(Dwarf_Attribute *attr)
 {
     Dwarf_Die die;
     dwarf_formref_die(attr, &die);
+    int status = 0;
     const char *tname = dwarf_diename(&die);
     if (tname)
         std::cout << tname << std::endl;
@@ -41,7 +102,7 @@ static int processType(Dwarf_Attribute *attr)
         if (dwarf_hasattr(&die, DW_AT_type)) {
             Dwarf_Attribute attrt;
             dwarf_attr(&die, DW_AT_type, &attrt);
-            processType(&attrt);
+            status = processType(&attrt);
         }
         std::cout << " *" << std::endl;
         break;
@@ -51,12 +112,15 @@ static int processType(Dwarf_Attribute *attr)
         if (dwarf_hasattr(&die, DW_AT_type)) {
             Dwarf_Attribute attrt;
             dwarf_attr(&die, DW_AT_type, &attrt);
-            processType(&attrt);
+            status = processType(&attrt);
         }
         std::cout << " &" << std::endl;
         break;
     }
     case DW_TAG_base_type:
+    {
+        return analyzeBaseType(&die);
+    }
     case DW_TAG_enumeration_type:
     case DW_TAG_ptr_to_member_type:
     case DW_TAG_structure_type:
@@ -92,21 +156,22 @@ static int processArgs(Dwarf_Die *die)
     return processArgs(&sibling);
 }
 
-static int processFunction(Dwarf_Die *die, void *ctx)
+int processFunction(Dwarf_Die *die, void *ctx)
 {
     Elf *elf = (Elf *)ctx;
     assert(dwarf_tag(die) == DW_TAG_subprogram);
     const char *fname = dwarf_diename(die);
     std::cout << fname << std::endl;
 
+    Dwarf_Attribute attrv;
+    if (!dwarf_attr(die, DW_AT_external, &attrv))
+        return 0;
+
     Dwarf_Attribute attrt;
     if (!dwarf_attr_integrate(die, DW_AT_type, &attrt))
         return 0;
 
     processType(&attrt);
-    Dwarf_Attribute attrv;
-    if (!dwarf_attr(die, DW_AT_external, &attrv))
-        return 0;
 
     bool val = false;
     if (dwarf_formflag(&attrv, &val))
@@ -153,5 +218,8 @@ int walk(const char *buffer, size_t size)
         dwarf_getfuncs(cudie, &processFunction, ehandle, 0);
     }
     dwarf_end(dw);
+
+    Elf64_Ehdr *hdr = elf64_getehdr(ehandle);
+    elf_end(ehandle);
     return 0;
 }

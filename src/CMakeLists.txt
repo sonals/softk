@@ -44,6 +44,10 @@ set (SRC
 
 add_executable(sk ${SRC})
 
+set_target_properties(sk PROPERTIES
+  CXX_VISIBILITY_PRESET "hidden"
+  )
+
 target_link_libraries(sk
   pthread
   ${LIBDW_LDFLAGS}
