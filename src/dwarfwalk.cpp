@@ -10,6 +10,7 @@
 #include <cstring>
 #include <tuple>
 #include <map>
+#include <vector>
 
 #include <libelf.h>
 #include <dwarf.h>
@@ -47,37 +48,36 @@ static std::map<std::pair<Dwarf_Word, Dwarf_Word>, ffi_type> typeTable = {
 static ffi_type qualifyBaseType(const std::pair<Dwarf_Word, Dwarf_Word> &code)
 {
     auto iter = typeTable.find(code);
-    return (iter == typeTable.end()) ? iter->second : ffi_type_void;
+    return (iter == typeTable.end()) ? ffi_type_void : iter->second;
 }
 
-static int analyzeBaseType(Dwarf_Die *die)
+static ffi_type analyzeBaseType(Dwarf_Die *die)
 {
     Dwarf_Attribute temp;
     Dwarf_Word type;
 
     if (!dwarf_attr(die, DW_AT_encoding, &temp))
-        return 0;
+        return ffi_type_void;
 
     if (dwarf_formudata(&temp, &type))
-        return 0;
+        return ffi_type_void;
 
     std::cout << type << std::endl;
 
     Dwarf_Attribute temp2;
     Dwarf_Word size;
     if (!dwarf_attr(die, DW_AT_byte_size, &temp2))
-        return 0;
+        return ffi_type_void;
 
     if (dwarf_formudata(&temp2, &size))
-        return 0;
+        return ffi_type_void;
 
     std::cout << size << std::endl;
-    ffi_type ftype = qualifyBaseType(std::make_pair(type, size));
-    return 0;
+    return qualifyBaseType(std::make_pair(type, size));
 }
 
 
-static int processType(Dwarf_Attribute *attr)
+static ffi_type processType(Dwarf_Attribute *attr)
 {
     Dwarf_Die die;
     dwarf_formref_die(attr, &die);
@@ -102,9 +102,10 @@ static int processType(Dwarf_Attribute *attr)
         if (dwarf_hasattr(&die, DW_AT_type)) {
             Dwarf_Attribute attrt;
             dwarf_attr(&die, DW_AT_type, &attrt);
-            status = processType(&attrt);
+            ffi_type ftype = processType(&attrt);
         }
         std::cout << " *" << std::endl;
+        return ffi_type_pointer;
         break;
     }
     case DW_TAG_reference_type:
@@ -112,7 +113,7 @@ static int processType(Dwarf_Attribute *attr)
         if (dwarf_hasattr(&die, DW_AT_type)) {
             Dwarf_Attribute attrt;
             dwarf_attr(&die, DW_AT_type, &attrt);
-            status = processType(&attrt);
+            ffi_type ftype = processType(&attrt);
         }
         std::cout << " &" << std::endl;
         break;
@@ -131,10 +132,10 @@ static int processType(Dwarf_Attribute *attr)
 //        std::cout << dwarf_tag(&die) << std::endl;
         break;
     }
-    return 0;
+    return ffi_type_void;
 }
 
-static int processArgs(Dwarf_Die *die)
+static int processArgs(Dwarf_Die *die, std::vector<std::pair<const char *, ffi_type>> &typeTable)
 {
     switch (dwarf_tag (die)) {
     case DW_TAG_formal_parameter:
@@ -142,9 +143,11 @@ static int processArgs(Dwarf_Die *die)
         const char *aname = dwarf_diename(die);
         std::cout << aname << std::endl;
         Dwarf_Attribute attrt;
+
         if (!dwarf_attr_integrate(die, DW_AT_type, &attrt))
-            return 0;
-        processType(&attrt);
+            typeTable.push_back(std::make_pair(aname, ffi_type_void));
+        else
+            typeTable.push_back(std::make_pair(aname, processType(&attrt)));
         break;
     }
     default:
@@ -153,7 +156,7 @@ static int processArgs(Dwarf_Die *die)
     Dwarf_Die sibling;
     if (dwarf_siblingof(die, &sibling))
         return 0;
-    return processArgs(&sibling);
+    return processArgs(&sibling, typeTable);
 }
 
 int processFunction(Dwarf_Die *die, void *ctx)
@@ -171,6 +174,7 @@ int processFunction(Dwarf_Die *die, void *ctx)
     if (!dwarf_attr_integrate(die, DW_AT_type, &attrt))
         return 0;
 
+    std::vector<std::pair<const char *, ffi_type>> argTypeTable;
     processType(&attrt);
 
     bool val = false;
@@ -185,7 +189,7 @@ int processFunction(Dwarf_Die *die, void *ctx)
         return 0;
 
     std::cout << '[' << std::endl;
-    processArgs(&child);
+    processArgs(&child, argTypeTable);
     std::cout << ']' << std::endl;
     std::cout.flush();
     const char *name = dwarf_formstring(&attrt);
