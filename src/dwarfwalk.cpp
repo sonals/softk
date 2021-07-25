@@ -17,12 +17,15 @@
 #include <elfutils/libdw.h>
 #include <ffi.h>
 
+#include "skutils.h"
+
 enum enumtest {
     ENUM1,
     ENUM2,
     ENUM3
 };
 
+extern "C" {
 __attribute__((visibility("default"))) int foo(char *bar, double baz)
 {
     return std::strlen(bar) + (int)baz;
@@ -42,7 +45,9 @@ __attribute__((visibility("default"))) int poo(long &tear, float fear)
 {
     return fear;
 }
+}
 
+namespace sk {
 static const std::map<std::pair<Dwarf_Word, Dwarf_Word>, ffi_type*> typeTable = {
     std::make_pair(std::make_pair(DW_ATE_unsigned_char, 1), &ffi_type_uint8),
     std::make_pair(std::make_pair(DW_ATE_signed_char, 1), &ffi_type_sint8),
@@ -73,7 +78,7 @@ static ffi_type *analyzeBaseType(Dwarf_Die *die)
     if (dwarf_formudata(&temp, &type))
         return nullptr;
 
-    std::cout << type << std::endl;
+    //std::cout << type << std::endl;
 
     Dwarf_Attribute temp2;
     Dwarf_Word size;
@@ -83,7 +88,7 @@ static ffi_type *analyzeBaseType(Dwarf_Die *die)
     if (dwarf_formudata(&temp2, &size))
         return nullptr;
 
-    std::cout << size << std::endl;
+    //std::cout << size << std::endl;
     return qualifyBaseType(std::make_pair(type, size));
 }
 
@@ -92,10 +97,6 @@ static ffi_type *processType(Dwarf_Attribute *attr)
 {
     Dwarf_Die die;
     dwarf_formref_die(attr, &die);
-
-    const char *tname = dwarf_diename(&die);
-    if (tname)
-        std::cout << tname << std::endl;
 
     switch (dwarf_tag(&die)) {
     case DW_TAG_typedef:
@@ -116,7 +117,7 @@ static ffi_type *processType(Dwarf_Attribute *attr)
             ffi_type *ftype = processType(&attrt);
             (void)ftype;
         }
-        std::cout << " *" << std::endl;
+//        std::cout << " *" << std::endl;
         return &ffi_type_pointer;
         break;
     }
@@ -140,13 +141,15 @@ static ffi_type *processType(Dwarf_Attribute *attr)
     return nullptr;
 }
 
-static int processArgs(Dwarf_Die *die, std::vector<std::pair<const char *, ffi_type *>> &typeTable)
+static int processArgs(Dwarf_Die *die, sk::argTypes &typeTable)
 {
     switch (dwarf_tag (die)) {
     case DW_TAG_formal_parameter:
     {
         const char *aname = dwarf_diename(die);
-        std::cout << aname << std::endl;
+        if (!aname)
+            aname = "??";
+//        std::cout << aname << std::endl;
         Dwarf_Attribute attrt;
 
         if (!dwarf_attr_integrate(die, DW_AT_type, &attrt))
@@ -166,23 +169,16 @@ static int processArgs(Dwarf_Die *die, std::vector<std::pair<const char *, ffi_t
 
 int processFunction(Dwarf_Die *die, void *ctx)
 {
-    Elf *elf = (Elf *)ctx;
-    (void)elf;
+    std::vector<sk::signature> *sigs = (std::vector<sk::signature> *)ctx;
     assert(dwarf_tag(die) == DW_TAG_subprogram);
     const char *fname = dwarf_diename(die);
-    std::cout << fname << std::endl;
 
+    /* We only care for exported symbols */
     Dwarf_Attribute attrv;
     if (!dwarf_attr(die, DW_AT_external, &attrv))
         return 0;
 
-    Dwarf_Attribute attrt;
-    if (!dwarf_attr_integrate(die, DW_AT_type, &attrt))
-        return 0;
-
-    std::vector<std::pair<const char *, ffi_type *>> argTypeTable;
-    processType(&attrt);
-
+    /* Attribute external is present, check if DW_FORM_flag_present flag is defined */
     bool val = false;
     if (dwarf_formflag(&attrv, &val))
         return 0;
@@ -190,22 +186,33 @@ int processFunction(Dwarf_Die *die, void *ctx)
     if (!val)
         return 0;
 
-    Dwarf_Die child;
-    if (dwarf_child(die, &child) != 0)
+    /* Symbols should have int return type */
+    Dwarf_Attribute attrt;
+    if (!dwarf_attr_integrate(die, DW_AT_type, &attrt))
         return 0;
 
-    std::cout << '[' << std::endl;
-    processArgs(&child, argTypeTable);
-    std::cout << ']' << std::endl;
-    std::cout.flush();
-    const char *name = dwarf_formstring(&attrt);
-    if (name)
-        std::cout << name << std::endl;
+    if (processType(&attrt) != &ffi_type_sint32)
+        return 0;
+
+    /* Identify and ignore C++ symbols -- they have a linkage name */
+    Dwarf_Attribute attrl;
+    if (dwarf_attr(die, DW_AT_linkage_name, &attrl))
+        return 0;
+
+    /* Go ahead and record this symbol */
+    sigs->emplace_back(fname);
+    Dwarf_Die child;
+    /* No child means no function arguments */
+    if (dwarf_child(die, &child) != 0)
+        return 0;
+    processArgs(&child, sigs->back().args);
     return 0;
 }
+}
 
-int walk(const char *buffer, size_t size)
+std::vector<sk::signature> walk(const char *buffer, size_t size)
 {
+    std::vector<sk::signature> sigs;
     Elf *ehandle = elf_memory(const_cast<char *>(buffer), size);
     // Example code snippet from elfutils/debuginfod/debuginfod.cxx
     Dwarf *dw = dwarf_begin_elf(ehandle, DWARF_C_READ, nullptr);
@@ -224,9 +231,9 @@ int walk(const char *buffer, size_t size)
             continue;
         const char *cuname = dwarf_diename(cudie) ?: "unknown";
         std::cout << cuname << std::endl;
-        dwarf_getfuncs(cudie, &processFunction, ehandle, 0);
+        dwarf_getfuncs(cudie, &sk::processFunction, &sigs, 0);
     }
     dwarf_end(dw);
     elf_end(ehandle);
-    return 0;
+    return sigs;
 }

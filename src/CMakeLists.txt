@@ -42,7 +42,9 @@ include (CTest)
 
 set (SRC
   "main.cpp"
-  "dwarfwalk.cpp")
+  "dwarfwalk.cpp"
+  "skutils.cpp"
+  )
 
 add_executable(sk ${SRC})
 

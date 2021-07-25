@@ -12,7 +12,9 @@
 #include <sstream>
 #include <fstream>
 
-extern int walk(const char *buffer, size_t size);
+#include "skutils.h"
+
+extern std::vector<sk::signature> walk(const char *buffer, size_t size);
 
 int main(int argc, char *argv[])
 {
@@ -25,6 +27,8 @@ int main(int argc, char *argv[])
     std::unique_ptr<char[]> buffer(new char[length]);
     ins.read(buffer.get(), length);
     ins.close();
-    walk(buffer.get(), length);
+    std::vector<sk::signature> sigs = walk(buffer.get(), length);
+    for (auto sig : sigs)
+        sig.dump(std::cout);
     return 0;
 }
