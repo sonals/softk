@@ -44,6 +44,7 @@ set (SRC
   "main.cpp"
   "dwarfwalk.cpp"
   "skutils.cpp"
+  "testfuncs.cpp"
   )
 
 add_executable(sk ${SRC})
