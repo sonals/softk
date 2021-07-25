@@ -48,6 +48,11 @@ __attribute__((visibility("default"))) int poo(long &tear, float fear)
 }
 
 namespace sk {
+
+/*
+ * Static table of C type/size to ffi type match
+ */
+
 static const std::map<std::pair<Dwarf_Word, Dwarf_Word>, ffi_type*> typeTable = {
     std::make_pair(std::make_pair(DW_ATE_unsigned_char, 1), &ffi_type_uint8),
     std::make_pair(std::make_pair(DW_ATE_signed_char, 1), &ffi_type_sint8),
@@ -67,6 +72,9 @@ static ffi_type *qualifyBaseType(const std::pair<Dwarf_Word, Dwarf_Word> &code)
     return (iter == typeTable.end()) ? nullptr : iter->second;
 }
 
+/*
+ * Zero-in to the exact ffi type object for this DW scalar type
+ */
 static ffi_type *analyzeBaseType(Dwarf_Die *die)
 {
     Dwarf_Attribute temp;
@@ -78,8 +86,6 @@ static ffi_type *analyzeBaseType(Dwarf_Die *die)
     if (dwarf_formudata(&temp, &type))
         return nullptr;
 
-    //std::cout << type << std::endl;
-
     Dwarf_Attribute temp2;
     Dwarf_Word size;
     if (!dwarf_attr(die, DW_AT_byte_size, &temp2))
@@ -88,11 +94,12 @@ static ffi_type *analyzeBaseType(Dwarf_Die *die)
     if (dwarf_formudata(&temp2, &size))
         return nullptr;
 
-    //std::cout << size << std::endl;
     return qualifyBaseType(std::make_pair(type, size));
 }
 
-
+/*
+ * Identify the ffi type object for this dwarf type
+ */
 static ffi_type *processType(Dwarf_Attribute *attr)
 {
     Dwarf_Die die;
@@ -117,7 +124,6 @@ static ffi_type *processType(Dwarf_Attribute *attr)
             ffi_type *ftype = processType(&attrt);
             (void)ftype;
         }
-//        std::cout << " *" << std::endl;
         return &ffi_type_pointer;
         break;
     }
@@ -149,9 +155,8 @@ static int processArgs(Dwarf_Die *die, sk::argTypes &typeTable)
         const char *aname = dwarf_diename(die);
         if (!aname)
             aname = "??";
-//        std::cout << aname << std::endl;
-        Dwarf_Attribute attrt;
 
+        Dwarf_Attribute attrt;
         if (!dwarf_attr_integrate(die, DW_AT_type, &attrt))
             typeTable.push_back(std::make_pair(aname, nullptr));
         else
@@ -167,7 +172,7 @@ static int processArgs(Dwarf_Die *die, sk::argTypes &typeTable)
     return processArgs(&sibling, typeTable);
 }
 
-int processFunction(Dwarf_Die *die, void *ctx)
+static int processFunction(Dwarf_Die *die, void *ctx)
 {
     std::vector<sk::signature> *sigs = (std::vector<sk::signature> *)ctx;
     assert(dwarf_tag(die) == DW_TAG_subprogram);
@@ -208,7 +213,6 @@ int processFunction(Dwarf_Die *die, void *ctx)
     processArgs(&child, sigs->back().args);
     return 0;
 }
-}
 
 std::vector<sk::signature> walk(const char *buffer, size_t size)
 {
@@ -236,4 +240,6 @@ std::vector<sk::signature> walk(const char *buffer, size_t size)
     dwarf_end(dw);
     elf_end(ehandle);
     return sigs;
+}
+
 }

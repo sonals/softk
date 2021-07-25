@@ -24,7 +24,7 @@ namespace sk {
         std::ostream &dump(std::ostream &out);
     };
 
-
+    std::vector<sk::signature> walk(const char *buffer, size_t size);
 }
 
 #endif

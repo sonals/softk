@@ -14,8 +14,6 @@
 
 #include "skutils.h"
 
-extern std::vector<sk::signature> walk(const char *buffer, size_t size);
-
 int main(int argc, char *argv[])
 {
     std::cout << "Using shared object file: " << argv[1] << std::endl;
@@ -27,7 +25,7 @@ int main(int argc, char *argv[])
     std::unique_ptr<char[]> buffer(new char[length]);
     ins.read(buffer.get(), length);
     ins.close();
-    std::vector<sk::signature> sigs = walk(buffer.get(), length);
+    std::vector<sk::signature> sigs = sk::walk(buffer.get(), length);
     for (auto sig : sigs)
         sig.dump(std::cout);
     return 0;
