@@ -27,7 +27,7 @@ namespace sk {
         /*FFI_TYPE_COMPLEX*/    "??",
     };
 
-    std::ostream &signature::dump(std::ostream &out)
+    std::ostream &signature::dump(std::ostream &out) const
     {
         out << "----\n";
         out << name << "(";

@@ -21,10 +21,10 @@ namespace sk {
         std::string name;
         argTypes args;
         signature(const char *_name) : name(_name) {}
-        std::ostream &dump(std::ostream &out);
+        std::ostream &dump(std::ostream &out) const;
     };
 
-    std::vector<sk::signature> walk(const char *buffer, size_t size);
+    const std::vector<sk::signature> walk(const char *buffer, size_t size);
 }
 
 #endif

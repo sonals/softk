@@ -214,28 +214,25 @@ static int processFunction(Dwarf_Die *die, void *ctx)
     return 0;
 }
 
-std::vector<sk::signature> walk(const char *buffer, size_t size)
+const std::vector<sk::signature> walk(const char *buffer, size_t size)
 {
     std::vector<sk::signature> sigs;
     Elf *ehandle = elf_memory(const_cast<char *>(buffer), size);
-    // Example code snippet from elfutils/debuginfod/debuginfod.cxx
     Dwarf *dw = dwarf_begin_elf(ehandle, DWARF_C_READ, nullptr);
+
+    /* Inspired by DWARF traversal code snippet from elfutils/debuginfod/debuginfod.cxx */
     Dwarf_Off offset = 0;
-    Dwarf_Off old_offset;
+    Dwarf_Off oldoff;
     size_t hsize;
 
-    while (dwarf_nextcu (dw, old_offset = offset, &offset, &hsize, nullptr, nullptr, nullptr) == 0)
+    while (!dwarf_nextcu(dw, oldoff = offset, &offset, &hsize, nullptr, nullptr, nullptr))
     {
-        Dwarf_Die cudie_mem;
-        Dwarf_Die *cudie = dwarf_offdie (dw, old_offset + hsize, &cudie_mem);
-        std::cout << cudie << std::endl;
-        if (cudie == NULL)
+        Dwarf_Die cudie;
+        if (!dwarf_offdie (dw, oldoff + hsize, &cudie))
             continue;
-        if (dwarf_tag (cudie) != DW_TAG_compile_unit)
+        if (dwarf_tag(&cudie) != DW_TAG_compile_unit)
             continue;
-        const char *cuname = dwarf_diename(cudie) ?: "unknown";
-        std::cout << cuname << std::endl;
-        dwarf_getfuncs(cudie, &sk::processFunction, &sigs, 0);
+        dwarf_getfuncs(&cudie, &sk::processFunction, &sigs, 0);
     }
     dwarf_end(dw);
     elf_end(ehandle);
